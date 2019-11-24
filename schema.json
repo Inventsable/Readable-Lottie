@@ -1,0 +1,33 @@
+{
+  "name": "Comp 1",
+  "frameRate": 30,
+  "layers": {
+    "groupTest": {
+      "Contents": {
+        "Group 1": {
+          "Rectangle Path 1": {
+            "Size": [
+              23.5,
+              23.5
+            ],
+            "Position": [
+              86.0,
+              -182.0
+            ],
+            "Roundness": 0.0
+          }
+        }
+      },
+      "Transform": {
+        "Position": {
+          "value": [
+            9,
+            0,
+            0
+          ],
+          "expression": "Some text here"
+        }
+      }
+    }
+  }
+}
