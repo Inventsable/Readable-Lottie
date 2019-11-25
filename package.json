@@ -1,5 +1,5 @@
 {
-  "name": "lottie-readable",
+  "name": "readable-lottie",
   "version": "1.0.0",
   "description": "Human readable format of Lottie JSON files",
   "main": "index.js",
