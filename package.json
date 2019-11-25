@@ -8,8 +8,7 @@
   },
   "keywords": [],
   "author": "Thomas Scharstein II <tom@inventsable.cc>",
+  "repository": "https://github.com/Inventsable/Readable-Lottie",
   "license": "ISC",
-  "dependencies": {
-    "lottie-web": "^5.5.10"
-  }
+  "dependencies": {}
 }
