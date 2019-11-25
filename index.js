@@ -1,3 +1,12 @@
+/*
+    ||  TODO  ||
+    - Clean up color assignment on Fill/Strokes
+    - Add support for keys
+    - Ensure support for extra values
+    - Test reversal process, write in reversals for rearrangments like nested Transform
+    - Test all layer types, precomps, deeply nested groups/layers
+*/
+
 // The master schema used to determine proper name equivalents of Lottie's minified keys
 const BLUEPRINT = {
   GENERIC: {},
@@ -88,7 +97,7 @@ const BLUEPRINT = {
  * @param {object} lottie         The JSON of or parsed Lottie instance.
  * @param {boolean} includeExtra  If false, skip lottie-specific values and provide bare minimum AE equivalent
  *
- * @return a new Lottie-Readable [OBJECT].
+ * @return {object} a new Readable-Lottie instance.
  */
 function convert(lottie, includeExtra = false) {
   // Ensure lottie is parsed
@@ -147,7 +156,7 @@ function convertLayers(list, includeExtra) {
  * @param {object}  schema        The BLUEPRINT[key] used to map the parent object
  * @param {boolean} includeExtra  If false, skip lottie-specific values and provide bare minimum AE equivalent
  * @param {string}  childRef      The key to root BLUEPRINT used to map children
- * @param {boolean} reversed      If false, convert from Lottie > Lottie-Readable, else otherwise if true
+ * @param {boolean} reversed      If false, convert from Lottie > Readable-Lottie, else otherwise if true
  *
  * @return {object} A new remapped PropGroup object with human-readable key/values.
  */
