@@ -12,14 +12,14 @@ Convert a Lottie file to a dev-friendly, near 1:1 parallel of an After Effects f
 
 - Convert any Lottie file to a more verbose, easier to debug, and human-readable version
 - Allow conversion from Lottie => Readable-Lottie and Readable-Lottie => Lottie
-- Create a library of methods for crawling through and modifying a Readable-Lottie file, similar to the After Effects Scripting API.
+- Create a library of methods for crawling through or modifying a Readable-Lottie file, similar to the After Effects Scripting API.
 - Generate `lottiePath` string for every readable prop/attribute, so devs can know the direct route to access any readable prop within the original Lottie file
 - Use Readable-Lottie as the foundation of browser Lottie file editors
 - Use Readable-Lottie as the foundation for a Reverse-Lottie panel, allowing you to drag and drop a Lottie file and construct it from scratch at the click of a button in After Effects
 
 ## Example
 
-A basic Lottie file with a single shape and 3 keyframes is very esoteric and hard to understand:
+A basic Lottie file with a single group, 3 shapes, and 3 keyframes is very esoteric and hard to understand:
 
 ```json
 {
