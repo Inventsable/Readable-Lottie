@@ -5,6 +5,7 @@
     - Ensure support for extra values
     - Test reversal process, write in reversals for rearrangments like nested Transform
     - Test all layer types, precomps, deeply nested groups/layers
+    - Add dynamic "path" attribute to all propGroups for their direct Lottie path
 */
 
 // The master schema used to determine proper name equivalents of Lottie's minified keys
@@ -132,7 +133,6 @@ function convertLayers(list, includeExtra) {
     Object.keys(BLUEPRINT.LAYER).forEach((key, i) => {
       // If this needs deep remapping and a BLUEPRINT exists for target key
       if (item[key] && BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()]) {
-        console.log(`${key} === ${BLUEPRINT.LAYER[key].toUpperCase()}`);
         // Divert it's contents to convertPropertyGroup()
         layer[BLUEPRINT.LAYER[key]] = convertPropertyGroup(
           item[key],
@@ -141,7 +141,8 @@ function convertLayers(list, includeExtra) {
           BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()].childRef
         );
       } else {
-        // This needs shallow remapping
+        // TODO
+        // This needs shallow remapping, and currently skips things like [markers].
       }
     });
     layerList.push(layer);
@@ -203,6 +204,9 @@ function convertPropertyGroup(
           childRef,
           reversed
         );
+        // TODO
+        // Clean this up, should be dynamic and recursive, accounting for keyframes
+        //
         // Determine if Fills/Strokes need additional tweaking
         let colors = propGroup.it.filter(item => {
           return item.c;
@@ -282,12 +286,11 @@ function readablePropertyGroup(propList, schema, includeExtra) {
   let result = {};
   if (includeExtra) result["extra"] = {};
   if (typeof propList === "object" && propList instanceof Array) {
-    console.log("Caught it:");
+    console.log("Caught error:");
     console.log(propList);
     console.log(schema);
   } else {
     Object.keys(propList).forEach((key, i) => {
-      // console.log(key);
       if (schema[key]) {
         result[schema[key]] =
           key == "ty" ? decodeType(propList[key], includeExtra) : propList[key];
@@ -342,6 +345,9 @@ function isJson(data) {
   return true;
 }
 
+// TODO
+// Additional support for things like gradient strokes, get a final list of these values
+// Can't seem to find this in the JSON schema. Ask hernan about this directly?
 function decodeType(str, includeExtra = false, reversed = false) {
   let types = {
     0: "PrecompLayer",
@@ -363,24 +369,7 @@ function decodeType(str, includeExtra = false, reversed = false) {
   Object.keys(typeList).forEach(type => {
     if (str == type) match = typeList[type];
   });
-  console.log(`Match for ${str} == ${match}`);
   return match;
-}
-
-function generateCompData(lottie) {
-  return {
-    version: lottie.v,
-    frameRate: lottie.fr,
-    width: lottie.w,
-    height: lottie.h
-  };
-}
-
-function convertLayer(propList, schema, reversed = false) {
-  let funcs = {
-    TRANSFORM: convertTransform
-  };
-  let result = {};
 }
 
 export default convert;
