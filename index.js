@@ -1,62 +1,83 @@
 // The master schema used to determine proper name equivalents of Lottie's minified keys
 const BLUEPRINT = {
+  GENERIC: {},
   COMP: {
-    v: "version",
-    fr: "frameRate",
+    nm: "name",
+    v: "lottieVersion",
     w: "width",
     h: "height",
+    fr: "frameRate",
+    ip: "firstFrame",
+    op: "lastFrame",
+    assets: "assets",
     extra: {
-      ip: "inPoint",
-      op: "outPoint",
-      ddd: "3D Layer",
-      assets: "assets"
+      ddd: "3DLayer"
     }
   },
   LAYER: {
-    ty: "Type",
+    ty: "type",
+    shapes: "Contents",
     ks: "Transform",
-    ind: "Index",
-    cl: "Class",
+    ind: "index",
+    cl: "class",
     nm: "name",
-    ef: "Effects",
-    parent: "Parent",
-    it: "Contents",
+    ef: "effects",
+    parent: "parent",
+    it: "content",
     markers: "markers",
     extra: {
-      t: "Text Data",
-      ao: "Auto-Orient",
-      bm: "Blend Mode",
-      ln: "Layer HTML ID",
-      ip: "InPoint",
-      st: "Start Time",
+      t: "textData",
+      ao: "autoOrient",
+      bm: "blendMode",
+      ln: "layerID",
+      ip: "inPoint",
+      st: "startTime",
       hasMask: "hasMask",
       masksProperties: "maskProperties",
-      sr: "Stretch",
-      refId: "Reference ID",
-      tm: "Time Remapping"
+      sr: "stretch",
+      refId: "referenceID",
+      tm: "timeRemapping"
+    }
+  },
+  CONTENTS: {
+    childRef: "CONTENTS",
+    ty: "type",
+    it: "children",
+    ks: "Transform",
+    nm: "name",
+    np: "numProps",
+    cix: "propertyIndexAlt",
+    ix: "propertyIndex",
+    bm: "blendMode",
+    mn: "matchName",
+    c: "color",
+    o: "opacity",
+    hd: "hidden",
+    extra: {
+      _render: "renderFlag"
     }
   },
   TRANSFORM: {
     childRef: "PROP",
-    o: "Opacity",
-    p: "Position",
-    a: "AnchorPoint",
-    s: "Scale",
-    r: "Rotation",
+    o: "opacity",
+    p: "position",
+    a: "anchorPoint",
+    s: "scale",
+    r: "rotation",
     extra: {
-      px: "PositionX",
-      py: "PositionY",
-      pz: "PositionZ",
-      sk: "Skew",
-      sa: "Skew Axis"
+      px: "positionX",
+      py: "positionY",
+      pz: "positionZ",
+      sk: "skew",
+      sa: "skewAxis"
     }
   },
   PROP: {
     k: "value",
     x: "expression",
     extra: {
-      ix: "Property Index",
-      a: "Animated"
+      ix: "propertyIndex",
+      a: "animated"
     }
   }
 };
@@ -70,10 +91,18 @@ const BLUEPRINT = {
  * @return a new Lottie-Readable [OBJECT].
  */
 function convert(lottie, includeExtra = false) {
+  // Ensure lottie is parsed
   lottie = isJson(lottie) ? JSON.parse(lottie) : lottie;
   let result = {};
-  result["compData"] = generateCompData(lottie);
-  result["name"] = lottie.nm;
+
+  // Assign top-level comp data
+  Object.keys(BLUEPRINT.COMP).forEach(key => {
+    result[BLUEPRINT.COMP[key]] = lottie[key];
+  });
+  result["duration"] = `${((lottie.op - 1) / lottie.fr)
+    .toFixed(2)
+    .replace(/\.\d*/, "")}:${(lottie.op - 1) % lottie.fr}`;
+  // Begin layer chaining, which will trigger other nested remapping to occur
   result["layers"] = convertLayers(lottie.layers, includeExtra);
   return result;
 }
@@ -92,8 +121,10 @@ function convertLayers(list, includeExtra) {
     let layer = {};
     layer["name"] = item.nm;
     Object.keys(BLUEPRINT.LAYER).forEach((key, i) => {
+      // If this needs deep remapping and a BLUEPRINT exists for target key
       if (item[key] && BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()]) {
-        // If this needs deep remapping and a BLUEPRINT exists for target key
+        console.log(`${key} === ${BLUEPRINT.LAYER[key].toUpperCase()}`);
+        // Divert it's contents to convertPropertyGroup()
         layer[BLUEPRINT.LAYER[key]] = convertPropertyGroup(
           item[key],
           BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()],
@@ -127,22 +158,88 @@ function convertPropertyGroup(
   childRef,
   reversed = false
 ) {
+  // console.log("Top:");
+  // console.log(propList);
   let result = {};
   if (includeExtra) result["extra"] = {};
-  Object.keys(propList).forEach((key, i) => {
-    if (schema[key])
-      result[schema[key]] = !reversed
-        ? readablePropertyGroup(
-            propList[key],
-            BLUEPRINT[childRef],
-            includeExtra
-          )
-        : readablePropertyGroup(
-            propList[key],
-            reversify(BLUEPRINT[childRef]),
-            includeExtra
+  if (typeof propList === "object" && propList instanceof Array) {
+    propList.forEach((propGroup, i) => {
+      let child = readablePropertyGroup(
+        propGroup,
+        BLUEPRINT[childRef],
+        includeExtra
+      );
+      // Determine if propGroup needs rearranging, in instance of having Transform or Contents
+      if (propGroup.it) {
+        let transformProp = propGroup.it.find(obj => {
+          return obj.ty == "tr";
+        });
+        if (transformProp) {
+          propGroup.it = propGroup.it.filter(item => {
+            return item.ty !== "tr";
+          });
+          child["Transform"] = convertPropertyGroup(
+            transformProp,
+            BLUEPRINT.TRANSFORM,
+            includeExtra,
+            BLUEPRINT.TRANSFORM.childRef,
+            reversed
           );
-  });
+        }
+        // Otherwise convert propGroup normally
+        child.children = convertPropertyGroup(
+          propGroup.it,
+          schema,
+          includeExtra,
+          childRef,
+          reversed
+        );
+        // Determine if Fills/Strokes need additional tweaking
+        let colors = propGroup.it.filter(item => {
+          return item.c;
+        });
+        if (colors.length) {
+          Object.keys(child.children).forEach(grandchild => {
+            let target = child.children[grandchild];
+            if (child.children[grandchild].color) {
+              target.color = {
+                animated: target.color.a,
+                propertyIndex: target.color.ix,
+                value: rgbaToHex(
+                  target.color.k.map(col => {
+                    return (col * 255).toFixed(0);
+                  })
+                )
+              };
+            }
+            if (child.children[grandchild].opacity) {
+              target.opacity = {
+                animated: target.opacity.a,
+                propertyIndex: target.opacity.ix,
+                value: target.opacity.k
+              };
+            }
+          });
+        }
+      }
+      result[propGroup.nm] = child;
+    });
+  } else {
+    Object.keys(propList).forEach((key, i) => {
+      if (schema[key])
+        result[schema[key]] = !reversed
+          ? readablePropertyGroup(
+              propList[key],
+              BLUEPRINT[childRef],
+              includeExtra
+            )
+          : readablePropertyGroup(
+              propList[key],
+              reversify(BLUEPRINT[childRef]),
+              includeExtra
+            );
+    });
+  }
   return result;
 }
 
@@ -175,6 +272,27 @@ function reversify(schema, includeExtra) {
 function readablePropertyGroup(propList, schema, includeExtra) {
   let result = {};
   if (includeExtra) result["extra"] = {};
+  if (typeof propList === "object" && propList instanceof Array) {
+    console.log("Caught it:");
+    console.log(propList);
+    console.log(schema);
+  } else {
+    Object.keys(propList).forEach((key, i) => {
+      // console.log(key);
+      if (schema[key]) {
+        result[schema[key]] =
+          key == "ty" ? decodeType(propList[key], includeExtra) : propList[key];
+      } else if (includeExtra) {
+        result.extra[schema.extra[key]] = propList[key];
+      }
+    });
+  }
+  return result;
+}
+
+function convertTransform(propList, schema, includeExtra, reversed = false) {
+  let result = {};
+  if (includeExtra) result["extra"] = {};
   Object.keys(propList).forEach((key, i) => {
     if (schema[key]) {
       result[schema[key]] = propList[key];
@@ -182,7 +300,21 @@ function readablePropertyGroup(propList, schema, includeExtra) {
       result.extra[schema.extra[key]] = propList[key];
     }
   });
+
   return result;
+}
+
+function rgbaToHex(val) {
+  while (val.length > 3) val.pop();
+  return (
+    "#" +
+    val
+      .map(c => {
+        c = c < 256 ? Math.abs(c).toString(16) : 0;
+        return c.length < 2 ? "0" + c : c;
+      })
+      .join("")
+  );
 }
 
 /**
@@ -199,6 +331,31 @@ function isJson(data) {
     return false;
   }
   return true;
+}
+
+function decodeType(str, includeExtra = false, reversed = false) {
+  let types = {
+    0: "PrecompLayer",
+    1: "SolidLayer",
+    2: "ImageLayer",
+    3: "NullLayer",
+    4: "ShapeLayer",
+    5: "TextLayer",
+    gr: "Group",
+    sh: "Shape",
+    fl: "Fill",
+    st: "Stroke",
+    tr: "Transform",
+    rc: "Rectangle",
+    el: "Ellipse"
+  };
+  let match = null;
+  let typeList = reversed ? reversify(types, includeExtra) : types;
+  Object.keys(typeList).forEach(type => {
+    if (str == type) match = typeList[type];
+  });
+  console.log(`Match for ${str} == ${match}`);
+  return match;
 }
 
 function generateCompData(lottie) {
