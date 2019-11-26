@@ -63,8 +63,12 @@ const BLUEPRINT = {
     c: "color",
     o: "opacity",
     hd: "hidden",
+    k: "value",
+    x: "expression",
+    ix: "propIndex",
     extra: {
-      _render: "renderFlag"
+      _render: "renderFlag",
+      a: "animated"
     }
   },
   TRANSFORM: {
@@ -182,12 +186,12 @@ function convertPropertyGroup(
   childRef,
   reversed = false
 ) {
-  // console.log("Top:");
-  // console.log(propList);
   let result = {};
   if (includeExtra) result["extra"] = {};
+  // If this is an Array of objects instead of an object, recurse this function until objects are met
   if (typeof propList === "object" && propList instanceof Array) {
     propList.forEach((propGroup, i) => {
+      // Transcribe each propGroup entry to be readable
       let child = readablePropertyGroup(
         propGroup,
         BLUEPRINT[childRef],
@@ -195,10 +199,10 @@ function convertPropertyGroup(
       );
       // Determine if propGroup needs rearranging, in instance of having Transform or Contents
       if (propGroup.it) {
-        // console.log(propGroup.nm);
         let transformProp = propGroup.it.find(obj => {
           return obj.ty == "tr";
         });
+        // If this has a Transform child, remove it and place it as an attribute of the parent
         if (transformProp) {
           propGroup.it = propGroup.it.filter(item => {
             return item.ty !== "tr";
@@ -211,7 +215,7 @@ function convertPropertyGroup(
             reversed
           );
         }
-        // Otherwise convert propGroup normally
+        // Otherwise call this same function on any children
         child.children = convertPropertyGroup(
           propGroup.it,
           schema,
@@ -219,41 +223,11 @@ function convertPropertyGroup(
           childRef,
           reversed
         );
-
-        // TODO
-        // Clean this up, should be dynamic and recursive, accounting for keyframes
-        //
-        // Determine if Fills/Strokes need additional tweaking
-        let colors = propGroup.it.filter(item => {
-          return item.c;
-        });
-        if (colors.length) {
-          Object.keys(child.children).forEach(grandchild => {
-            let target = child.children[grandchild];
-            if (child.children[grandchild].color) {
-              target.color = {
-                animated: target.color.a,
-                propertyIndex: target.color.ix,
-                value: rgbaToHex(
-                  target.color.k.map(col => {
-                    return (col * 255).toFixed(0);
-                  })
-                )
-              };
-            }
-            if (child.children[grandchild].opacity) {
-              target.opacity = {
-                animated: target.opacity.a,
-                propertyIndex: target.opacity.ix,
-                value: target.opacity.k
-              };
-            }
-          });
-        }
       }
       result[propGroup.nm] = child;
     });
   } else {
+    // If this isn't an Array, transcribe it normally according to BLUEPRINT
     Object.keys(propList).forEach((key, i) => {
       if (schema[key])
         result[schema[key]] = !reversed
@@ -301,6 +275,7 @@ function reversify(schema, includeExtra) {
 function readablePropertyGroup(propList, schema, includeExtra) {
   let result = {};
   if (includeExtra) result["extra"] = {};
+
   // If this is an array of propGroups, specifically from a 'value' parent for keyframes
   if (typeof propList === "object" && propList instanceof Array) {
     propList.forEach((propGroup, num) => {
@@ -323,20 +298,38 @@ function readablePropertyGroup(propList, schema, includeExtra) {
       }
     });
   } else {
-    // Otherwise if this is a normal propList, and nesting is taken care of by parent function,
+    // Otherwise if this is a normal propList, and nesting is likely taken care of by parent function,
     // Assign readable values to this tier only
     //
-    // Maybe this should nest? Unsure if needed or if parent function takes care of all recursion otherwise
     Object.keys(propList).forEach((key, i) => {
       if (schema[key]) {
         result[schema[key]] =
           key == "ty" ? decodeType(propList[key], includeExtra) : propList[key];
+
+        // However this may still need a fallback in case it has nested contents the parent function doesn't catch
+        if (
+          typeof propList[key] === "object" &&
+          !(result["value"] instanceof Array) &&
+          schema[key] !== "children"
+        ) {
+          //
+          // This may be a Fill's color or opacity prop, call the function again if it isn't a children collection
+          result[schema[key]] = readablePropertyGroup(
+            propList[key],
+            schema,
+            includeExtra
+          );
+          // If it happens to be a color, replace AE's RGB format with web-friendly hex value
+          if (schema[key] == "color") {
+            result.color.value = rgbaToHex(result.color.value);
+          }
+        }
       } else if (includeExtra) {
         result.extra[schema.extra[key]] = propList[key];
       }
     });
   }
-  // If this normal Readable prop is a 'value' and may have keyframes, call this function again on it's contents
+  // If this normal Readable prop is a 'value' and could have keyframes, call this function again on it's contents
   if (
     result["value"] &&
     typeof result["value"] === "object" &&
@@ -358,31 +351,25 @@ function readablePropertyGroup(propList, schema, includeExtra) {
   return result;
 }
 
-function convertTransform(propList, schema, includeExtra, reversed = false) {
-  let result = {};
-  if (includeExtra) result["extra"] = {};
-  Object.keys(propList).forEach((key, i) => {
-    if (schema[key]) {
-      result[schema[key]] = propList[key];
-    } else if (includeExtra) {
-      result.extra[schema.extra[key]] = propList[key];
-    }
-  });
-
-  return result;
-}
-
-function rgbaToHex(val) {
+/**
+ * Converts an After Effects RGB color array to hexadecimal format
+ *
+ * @param {array} val          The array of floating values (eg. from shapes.c.k, like below:
+ *                                      [ 0.525490224361, 0.262745112181, 0.262745112181, 1 ]
+ * @param {boolean} hashed     If false, don't prepend # to result
+ * @return {string} .
+ */
+function rgbaToHex(val, hashed = true) {
   while (val.length > 3) val.pop();
-  return (
-    "#" +
-    val
-      .map(c => {
-        c = c < 256 ? Math.abs(c).toString(16) : 0;
-        return c.length < 2 ? "0" + c : c;
-      })
-      .join("")
-  );
+  return `${hashed ? "#" : ""}${val
+    .map(c => {
+      return (c * 255).toFixed(0);
+    })
+    .map(c => {
+      c = c < 256 ? Math.abs(c).toString(16) : 0;
+      return c.length < 2 ? `0${c}` : c;
+    })
+    .join("")}`;
 }
 
 /**
