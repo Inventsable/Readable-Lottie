@@ -1,7 +1,8 @@
 /*
     ||  TODO  ||
-    - Clean up color assignment on Fill/Strokes
-    - Add support for keys
+    - Treat each assets entry as it's own comp. Call convert() on each entry if possible
+    - Test deeply nested recursion for all layer types and properties
+    - Clean up BLUEPRINT
     - Ensure support for extra values
     - Test reversal process, write in reversals for rearrangments like nested Transform
     - Test all layer types, precomps, deeply nested groups/layers
@@ -10,7 +11,6 @@
 
 // The master schema used to determine proper name equivalents of Lottie's minified keys
 const BLUEPRINT = {
-  GENERIC: {},
   COMP: {
     nm: "name",
     v: "lottieVersion",
