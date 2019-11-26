@@ -461,43 +461,20 @@ The Readable-Lottie version of this same file, though far more verbose and conse
           "value": 0
         },
         "position": {
-          //
-          // KEYFRAMES NOT YET SUPPORTED
-          //
-          "value": [
-            {
-              "i": {
-                "x": 0.833,
-                "y": 0.833
-              },
-              "o": {
-                "x": 0.167,
-                "y": 0.167
-              },
-              "t": 0,
-              "s": [300, 219, 0],
-              "to": null,
-              "ti": null
+          "value": {
+            "bezierIn": {
+              "x": 0.833,
+              "y": 0.833
             },
-            {
-              "i": {
-                "x": 0.833,
-                "y": 0.833
-              },
-              "o": {
-                "x": 0.167,
-                "y": 0.167
-              },
-              "t": 20,
-              "s": [300, 115, 0],
-              "to": null,
-              "ti": null
+            "bezierOut": {
+              "x": 0.167,
+              "y": 0.167
             },
-            {
-              "t": 40,
-              "s": [300, 219, 0]
-            }
-          ]
+            "startTime": 40,
+            "startValue": [300, 219, 0],
+            "inTangent": null,
+            "outTangent": null
+          }
         },
         "anchorPoint": {
           "value": [86, -182, 0]

@@ -82,6 +82,20 @@ const BLUEPRINT = {
       sa: "skewAxis"
     }
   },
+  KEYFRAME: {
+    k: "propValue",
+    x: "propExpression",
+    ix: "propIndex",
+    a: "animated",
+    to: "inTangent",
+    ti: "outTangent",
+    s: "startValue",
+    t: "startTime",
+    i: "bezierIn",
+    o: "bezierOut",
+    x: "bezierX",
+    y: "bezierY"
+  },
   PROP: {
     k: "value",
     x: "expression",
@@ -181,6 +195,7 @@ function convertPropertyGroup(
       );
       // Determine if propGroup needs rearranging, in instance of having Transform or Contents
       if (propGroup.it) {
+        // console.log(propGroup.nm);
         let transformProp = propGroup.it.find(obj => {
           return obj.ty == "tr";
         });
@@ -204,6 +219,7 @@ function convertPropertyGroup(
           childRef,
           reversed
         );
+
         // TODO
         // Clean this up, should be dynamic and recursive, accounting for keyframes
         //
@@ -285,11 +301,32 @@ function reversify(schema, includeExtra) {
 function readablePropertyGroup(propList, schema, includeExtra) {
   let result = {};
   if (includeExtra) result["extra"] = {};
+  // If this is an array of propGroups, specifically from a 'value' parent for keyframes
   if (typeof propList === "object" && propList instanceof Array) {
-    console.log("Caught error:");
-    console.log(propList);
-    console.log(schema);
+    propList.forEach((propGroup, num) => {
+      // And this value is an object with keys
+      if (typeof propGroup === "object" && Object.keys(propGroup).length) {
+        // Transcribe the Readable key/values
+        Object.keys(propGroup).forEach((key, i) => {
+          if (schema[key]) {
+            result[schema[key]] =
+              key == "ty"
+                ? decodeType(propGroup[key], includeExtra)
+                : propGroup[key];
+          } else if (includeExtra) {
+            result.extra[schema.extra[key]] = propGroup[key];
+          }
+        });
+      } else {
+        console.log(`Near a keyframe but not matching:`);
+        console.log(propGroup);
+      }
+    });
   } else {
+    // Otherwise if this is a normal propList, and nesting is taken care of by parent function,
+    // Assign readable values to this tier only
+    //
+    // Maybe this should nest? Unsure if needed or if parent function takes care of all recursion otherwise
     Object.keys(propList).forEach((key, i) => {
       if (schema[key]) {
         result[schema[key]] =
@@ -298,6 +335,25 @@ function readablePropertyGroup(propList, schema, includeExtra) {
         result.extra[schema.extra[key]] = propList[key];
       }
     });
+  }
+  // If this normal Readable prop is a 'value' and may have keyframes, call this function again on it's contents
+  if (
+    result["value"] &&
+    typeof result["value"] === "object" &&
+    result["value"] instanceof Array
+  ) {
+    // If this is an Array, but of objects rather than numeric values (as in [x,y,z] values), we know it's a keyframe
+    let isKeyframe =
+      result["value"].filter(val => {
+        return typeof val === "object";
+      }).length > 0;
+    if (isKeyframe) {
+      result["value"] = readablePropertyGroup(
+        result.value,
+        BLUEPRINT.KEYFRAME,
+        includeExtra
+      );
+    }
   }
   return result;
 }
