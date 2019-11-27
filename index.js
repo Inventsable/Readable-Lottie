@@ -1,15 +1,18 @@
 /*
     ||  TODO  ||
-    - Treat each assets entry as it's own comp. Call convert() on each entry if possible
+    - This might be better asynchonous with async/await, in the instance of huge files.
+          - If so, all forEach methods need to be replaced with for...of
+
     - Test deeply nested recursion for all layer types and properties
     - Clean up BLUEPRINT
     - Ensure support for extra values
+    - Fix shallow mapping for propGroups like Effects
     - Test reversal process, write in reversals for rearrangments like nested Transform
-    - Test all layer types, precomps, deeply nested groups/layers
     - Add dynamic "path" attribute to all propGroups for their direct Lottie path
 */
 
 // The master schema used to determine proper name equivalents of Lottie's minified keys
+
 const BLUEPRINT = {
   COMP: {
     nm: "name",
@@ -25,15 +28,15 @@ const BLUEPRINT = {
     }
   },
   LAYER: {
+    childRef: "CONTENTS",
     ty: "type",
     shapes: "Contents",
     ks: "Transform",
     ind: "index",
     cl: "class",
     nm: "name",
-    ef: "effects",
+    ef: "Effects",
     parent: "parent",
-    it: "content",
     markers: "markers",
     extra: {
       t: "textData",
@@ -52,24 +55,28 @@ const BLUEPRINT = {
   CONTENTS: {
     childRef: "CONTENTS",
     ty: "type",
+    nm: "name",
     it: "children",
     ks: "Transform",
-    nm: "name",
+    ind: "index",
     np: "numProps",
-    cix: "propertyIndexAlt",
+    ef: "Effects",
     ix: "propertyIndex",
+    cix: "contentPropertyIndex",
     bm: "blendMode",
     mn: "matchName",
+    r: "roundedCorners",
     c: "color",
     o: "opacity",
+    p: "position",
+    s: "size",
+    k: "value",
+    d: "direction",
     hd: "hidden",
     k: "value",
     x: "expression",
-    ix: "propIndex",
-    extra: {
-      _render: "renderFlag",
-      a: "animated"
-    }
+    _render: "renderFlag",
+    a: "animated"
   },
   TRANSFORM: {
     childRef: "PROP",
@@ -78,18 +85,16 @@ const BLUEPRINT = {
     a: "anchorPoint",
     s: "scale",
     r: "rotation",
-    extra: {
-      px: "positionX",
-      py: "positionY",
-      pz: "positionZ",
-      sk: "skew",
-      sa: "skewAxis"
-    }
+    sk: "skew",
+    sa: "skewAxis",
+    px: "positionX",
+    py: "positionY",
+    pz: "positionZ"
   },
   KEYFRAME: {
-    k: "propValue",
-    x: "propExpression",
-    ix: "propIndex",
+    k: "value",
+    x: "expression",
+    ix: "propertyIndex",
     a: "animated",
     to: "inTangent",
     ti: "outTangent",
@@ -103,8 +108,8 @@ const BLUEPRINT = {
   PROP: {
     k: "value",
     x: "expression",
+    ix: "propertyIndex",
     extra: {
-      ix: "propertyIndex",
       a: "animated"
     }
   }
@@ -130,13 +135,28 @@ function convert(lottie, includeExtra = false) {
   result["duration"] = `${((lottie.op - 1) / lottie.fr)
     .toFixed(2)
     .replace(/\.\d*/, "")}:${(lottie.op - 1) % lottie.fr}`;
+
+  // Treat assets as isolated comps, chaining them first:
+  result["assets"] = lottie.assets.map(asset => {
+    return convertAsset(asset, includeExtra);
+  });
   // Begin layer chaining, which will trigger other nested remapping to occur
   result["layers"] = convertLayers(lottie.layers, includeExtra);
+
+  return result;
+}
+
+function convertAsset(asset, includeExtra = false) {
+  // console.log(asset);
+  let result = {};
+  result["name"] = asset.id;
+  result["layers"] = convertLayers(asset.layers, includeExtra);
+  // Still needs shallow remapping for comp data
   return result;
 }
 
 /**
- * Creates a deep remap of lottie's native layer prop according to BLUEPRINT
+ * Creates a deep remap of a lottie instance's layerlist according to BLUEPRINT
  *
  * @param {array} list            Layer objects to remap.
  * @param {boolean} includeExtra  if false, skip lottie-specific values and provide bare minimum AE equivalent
@@ -148,6 +168,7 @@ function convertLayers(list, includeExtra) {
   list.forEach((item, i) => {
     let layer = {};
     layer["name"] = item.nm;
+    let shallows = {};
     Object.keys(BLUEPRINT.LAYER).forEach((key, i) => {
       // If this needs deep remapping and a BLUEPRINT exists for target key
       if (item[key] && BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()]) {
@@ -158,11 +179,20 @@ function convertLayers(list, includeExtra) {
           includeExtra,
           BLUEPRINT[BLUEPRINT.LAYER[key].toUpperCase()].childRef
         );
-      } else {
-        // TODO
-        // This needs shallow remapping, and currently skips things like [markers].
+      } else if (item[key]) {
+        shallows[key] = item[key];
       }
     });
+    if (shallows && Object.keys(shallows).length) {
+      let appended = readablePropertyGroup(
+        shallows,
+        BLUEPRINT.CONTENTS,
+        includeExtra
+      );
+      Object.assign(layer, appended);
+      // TODO
+      // This isn't catching Effects like Slider controls beyond the first depth
+    }
     layerList.push(layer);
   });
   return layerList;
@@ -356,6 +386,7 @@ function readablePropertyGroup(propList, schema, includeExtra) {
  *
  * @param {array} val          The array of floating values (eg. from shapes.c.k, like below:
  *                                      [ 0.525490224361, 0.262745112181, 0.262745112181, 1 ]
+ *
  * @param {boolean} hashed     If false, don't prepend # to result
  * @return {string} .
  */
@@ -393,12 +424,23 @@ function isJson(data) {
 // Can't seem to find this in the JSON schema. Ask hernan about this directly?
 function decodeType(str, includeExtra = false, reversed = false) {
   let types = {
+    // taken from bodymovin-ext/bundle/jsx/enums/layerTypes
     0: "PrecompLayer",
     1: "SolidLayer",
-    2: "ImageLayer",
+    2: "StillLayer", // Image?
     3: "NullLayer",
     4: "ShapeLayer",
-    5: "TextLayer",
+    5: "TextLayer", // Produces conflict with Slider Control
+    6: "AudioLayer",
+    7: "placeholderVideoLayer",
+    8: "ImageSeqLayer",
+    9: "VideoLayer",
+    10: "placeholderStillLayer",
+    11: "GuideLayer",
+    12: "AdjustmentLayer",
+    13: "CameraLayer",
+    14: "LightLayer",
+    //
     gr: "Group",
     sh: "Shape",
     fl: "Fill",
